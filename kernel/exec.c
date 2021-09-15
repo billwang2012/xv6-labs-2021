@@ -118,6 +118,7 @@ exec(char *path, char **argv)
 
   printf("pid=%d\n",p->pid);
   vmprint(p->pagetable);
+  vmprint(p->kpagetable);
 
   return argc; // this ends up in a0, the first argument to main(argc, argv)
 

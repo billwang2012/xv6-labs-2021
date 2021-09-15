@@ -87,6 +87,39 @@ allocpid() {
   return pid;
 }
 
+extern char etext[];  // kernel.ld sets this to end of kernel code.
+
+void
+ukvminit(pagetable_t kpagetable)
+{
+  //kpagetable = (pagetable_t) kalloc();
+  memset(kpagetable, 0, PGSIZE);
+
+  // uart registers
+  ukvmmap(kpagetable,UART0, UART0, PGSIZE, PTE_R | PTE_W);
+
+  // virtio mmio disk interface
+  ukvmmap(kpagetable,VIRTIO0, VIRTIO0, PGSIZE, PTE_R | PTE_W);
+
+  // CLINT
+  ukvmmap(kpagetable,CLINT, CLINT, 0x10000, PTE_R | PTE_W);
+
+  // PLIC
+  ukvmmap(kpagetable,PLIC, PLIC, 0x400000, PTE_R | PTE_W);
+
+  // map kernel text executable and read-only.
+  ukvmmap(kpagetable,KERNBASE, KERNBASE, (uint64)etext-KERNBASE, PTE_R | PTE_X);
+
+  // map kernel data and the physical RAM we'll make use of.
+  ukvmmap(kpagetable,(uint64)etext, (uint64)etext, PHYSTOP-(uint64)etext, PTE_R | PTE_W);
+
+  // map the trampoline for trap entry/exit to
+  // the highest virtual address in the kernel.
+  ukvmmap(kpagetable,TRAMPOLINE, (uint64)trampoline, PGSIZE, PTE_R | PTE_X);
+
+  vmprint(kpagetable);
+}
+
 // Look in the process table for an UNUSED proc.
 // If found, initialize state required to run in the kernel,
 // and return with p->lock held.
@@ -123,6 +156,16 @@ found:
     return 0;
   }
 
+  // An empty user kernel page table.
+  p->kpagetable = (pagetable_t) kalloc();
+  if(p->kpagetable == 0){
+    freeproc(p);
+    release(&p->lock);
+    return 0;
+  }
+  // user kernel page table init
+  ukvminit(p->kpagetable);
+
   // Set up new context to start executing at forkret,
   // which returns to user space.
   memset(&p->context, 0, sizeof(p->context));
@@ -144,6 +187,7 @@ freeproc(struct proc *p)
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
   p->pagetable = 0;
+  p->kpagetable = 0;
   p->sz = 0;
   p->pid = 0;
   p->parent = 0;
@@ -477,6 +521,10 @@ scheduler(void)
         c->proc = p;
         swtch(&c->context, &p->context);
 
+        //load user kernel page table
+        w_satp(MAKE_SATP(p->kpagetable));
+        sfence_vma();
+
         // Process is done running for now.
         // It should have changed its p->state before coming back.
         c->proc = 0;
@@ -484,6 +532,10 @@ scheduler(void)
         found = 1;
       }
       release(&p->lock);
+      //if no process is running change to kernel_pagetable;
+      kvminithart();
+      //w_satp(MAKE_SATP(kernel_pagetable));
+      //sfence_vma();
     }
 #if !defined (LAB_FS)
     if(found == 0) {

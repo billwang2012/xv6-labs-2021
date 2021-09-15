@@ -123,6 +123,13 @@ kvmmap(uint64 va, uint64 pa, uint64 sz, int perm)
     panic("kvmmap");
 }
 
+
+void
+ukvmmap(pagetable_t kpagetable, uint64 va, uint64 pa, uint64 sz, int perm)
+{
+  if(mappages(kpagetable, va, sz, pa, perm) != 0)
+    panic("kvmmap");
+}
 // translate a kernel virtual address to
 // a physical address. only needed for
 // addresses on the stack.
@@ -471,7 +478,7 @@ vmprint(pagetable_t pagetable)
           pte_t l3pte = l3pagetable[k];
 
           if(l3pte & PTE_V ){
-            printf("..  ..  .. %d: pte %p:%p :pa %p\n",k, l3pte,(l3pte>>10)<<12, PTE2PA(l3pte)); //3rd level
+            //printf("..  ..  .. %d: pte %p:%p :pa %p\n",k, l3pte,(l3pte>>10)<<12, PTE2PA(l3pte)); //3rd level
             }
           }
         }
