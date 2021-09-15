@@ -45,6 +45,8 @@ kvminit()
   // map the trampoline for trap entry/exit to
   // the highest virtual address in the kernel.
   kvmmap(TRAMPOLINE, (uint64)trampoline, PGSIZE, PTE_R | PTE_X);
+
+  vmprint(kernel_pagetable);
 }
 
 // Switch h/w page table register to the kernel's page table,
@@ -439,4 +441,42 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
   } else {
     return -1;
   }
+}
+
+// print page table information
+void
+vmprint(pagetable_t pagetable)
+{
+  //there are 2^9 = 512 PTEs in a page table.
+  printf("page table %p\n",pagetable);
+
+  for(int i = 0; i < 512; i++){
+    pte_t l1pte = pagetable[i];
+    
+    if((l1pte & PTE_V) && (l1pte & (PTE_R|PTE_W|PTE_X)) == 0){
+      // this PTE points to a lower-level page table.
+      printf(".. %d: pte %p:%p :pa %p\n",i,l1pte,(l1pte>>10)<<12, PTE2PA(l1pte)); //1st level
+
+      for(int j = 0; j < 512; j++){
+        //uint64 l2 = PTE2PA(l1pte);
+        pagetable_t l2pagetable = (pagetable_t)PTE2PA(l1pte);
+        pte_t l2pte = l2pagetable[j];
+
+        if((l2pte & PTE_V) && (l2pte & (PTE_R|PTE_W|PTE_X)) == 0){
+          printf("..  .. %d: pte %p:%p :pa %p\n",j,l2pte,(l2pte>>10)<<12, PTE2PA(l2pte)); //2nd level
+
+        for(int k = 0; k < 512; k++){
+          //uint64 l3 = PTE2PA(l2pte);
+          pagetable_t l3pagetable = (pagetable_t)PTE2PA(l2pte);
+          pte_t l3pte = l3pagetable[k];
+
+          if(l3pte & PTE_V ){
+            printf("..  ..  .. %d: pte %p:%p :pa %p\n",k, l3pte,(l3pte>>10)<<12, PTE2PA(l3pte)); //3rd level
+            }
+          }
+        }
+      } 
+    }
+  }
+  printf("\n");
 }
